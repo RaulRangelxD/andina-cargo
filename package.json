@@ -1,0 +1,25 @@
+{
+  "name": "andina-cargo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Technical test - Andina Cargo shipment tracking system",
+  "main": "index.js",
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter api test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.25.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.25.0",
+  "type": "module"
+}
