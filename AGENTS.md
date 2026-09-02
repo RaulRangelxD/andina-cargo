@@ -217,9 +217,15 @@ andina-cargo/
 ├── README.md
 ├── apps/
 │   ├── api/                  NestJS 12, ESM, NodeNext, vitest, oxlint
+│   │   ├── prisma/
+│   │   │   ├── schema.prisma     modelos Carrier, Shipment, ShipmentEvent (Fase 4)
+│   │   │   ├── migrations/       migración inicial (0001_init)
+│   │   │   └── seed.ts           datos de ejemplo (3 carriers + timelines)
 │   │   └── src/
-│   │       ├── app.*         Hello World por defecto (sin funcionalidad real)
-│   │       └── normalization/   Normalización de los 3 transportistas (Fase 3)
+│   │       ├── app.*         Hello World por defecto
+│   │       ├── db/           PrismaService + DbModule global (Fase 4)
+│   │       ├── normalization/   Normalización de los 3 transportistas (Fase 3)
+│   │       └── ingestion/       POST /ingest + persistencia de lotes (Fase 5)
 │   └── web/                  Next.js 16.3.4, React 19, Tailwind v4, App Router
 │       └── src/app/          Template create-next-app por defecto
 └── packages/
@@ -233,9 +239,10 @@ andina-cargo/
 - `@andina-cargo/shared` **sí es dependencia** de `apps/api` (`workspace:*`). No de `apps/web` todavía.
 - `packages/shared` **es buildable** → `dist/` (usa `.ts` como fuente; `pnpm build` genera `dist/*.js` + `.d.ts`). Imports internos usan extensión `.js` (NodeNext ESM).
 - La API importa archivos con extensión `.js` (convención NodeNext ESM).
+- `apps/api` usa **Prisma** `@prisma/client` + schema `apps/api/prisma/schema.prisma`. Cliente generado en node_modules. Scripts `prisma:*`.
 - `apps/web` tiene un `pnpm-workspace.yaml` y `pnpm-lock.yaml` anidados (no estándar en monorepo).
-- No existen Docker, docker-compose ni archivos `.env`.
-- Git: un solo commit (`init commit`); la rama tiene cambios de Fase 2 y Fase 3 sin commitear.
+- No existen Docker, docker-compose ni archivos `.env` (solo `.env.example` con `DATABASE_URL` de Supabase).
+- Git: un solo commit (`init commit`); la rama tiene cambios de Fase 2 a Fase 5 sin commitear.
 
 ---
 
@@ -364,19 +371,23 @@ Posteriormente: `FourthCarrierAdapter` sin modificar el core (crear el adapter y
 - JSONB para `rawPayload`.
 - Schema/migrations, shipments, events, carriers, índices, relaciones, seed.
 - Pensar en 2M+ eventos, 4 carriers.
-- **Estado: SIGUIENTE**
+- **Estado: COMPLETADA**
+
+> Implementación en `apps/api/prisma/` + `apps/api/src/db/`. Ver sección "Módulo de persistencia (Fase 4)" más abajo.
 
 ### FASE 5 — Endpoint de ingesta
 - Recibir lotes hasta 5.000 eventos.
 - Request → Validación → Identificación carrier → Adapter → NormalizedEvent → Persistencia.
 - Eventos inválidos, duplicados, errores parciales, respuesta del endpoint.
 - Estrategia de idempotencia/deduplicación.
-- **Estado: PENDIENTE**
+- **Estado: COMPLETADA**
+
+> Implementación en `apps/api/src/ingestion/`. Ver sección "Módulo de ingesta (Fase 5)" más abajo.
 
 ### FASE 6 — API de consulta
 - `GET /shipments/:trackingNumber` y `GET /shipments` (paginado + filtro).
 - DTOs, validación, errores HTTP.
-- **Estado: PENDIENTE**
+- **Estado: SIGUIENTE**
 
 ### FASE 7 — Panel Next.js
 - Buscador → Detalle → Estado → Ubicación → Timeline.
@@ -459,7 +470,7 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 4 — Modelo de datos y persistencia.**
+**Fase 6 — API de consulta.**
 
 ---
 
@@ -496,3 +507,55 @@ normalization/
 - **Andes Express**: `ts` ISO 8601.
 - **Country**: solo se asigna si el payload lo provee (no se inventa).
 - **Eventos no interpretables**: lanza `NormalizationError` con código (`MISSING_FIELD`, `INVALID_DATE`, `UNKNOWN_STATUS`, `UNSUPPORTED_CARRIER`) y `trackingNumber` opcional. La Fase 5 decidirá cómo rechazarlos/omitirlos en el lote.
+
+---
+
+## Módulo de persistencia (Fase 4)
+
+Ubicación: `apps/api/prisma/` + `apps/api/src/db/`. PostgreSQL vía Prisma, destino Supabase.
+
+```
+apps/api/
+├── prisma/
+│   ├── schema.prisma          Carrier, Shipment, ShipmentEvent, enum ShipmentStatus
+│   ├── migrations/0001_init/  migración inicial (creada offline con migrate diff)
+│   └── seed.ts                seed idempotente (3 carriers + timelines)
+└── src/db/
+    ├── prisma.service.ts      PrismaClient inyectable (OnModuleInit/Destroy)
+    └── db.module.ts           DbModule global que exporta PrismaService
+```
+
+### Modelo
+- `enum ShipmentStatus`: los 5 estados idénticos a `@andina-cargo/shared` (mapeo 1:1).
+- `Carrier` (`id` cuid, `code` unique, `name`).
+- `Shipment`: `@@unique([trackingNumber, carrierId])`, `current*` denormalizado (estado actual), índices `(carrierId, currentStatus)` y `(updatedAt)`.
+- `ShipmentEvent`: `dedupeKey @unique` (deduplicación), `rawPayload Jsonb`, `occurredAt Timestamptz(6)`, índices `(shipmentId, occurredAt DESC)` y `(carrierId, occurredAt DESC)`. `onDelete: Cascade` (eventos) / `Restrict` (carrier).
+
+### Decisiones
+- **Deduplicación**: `dedupeKey` = hash SHA-256 del evento normalizado canónico. Se usa con `createMany({ skipDuplicates })`.
+- **Escala 2M+ / 4 carriers**: denormalización `current*` + índices B-tree. A 100×: particionar `ShipmentEvent` por `occurredAt` o índice BRIN (documentado, no implementado aún).
+- Config: `.env.example` con `DATABASE_URL` Supabase. `prisma:generate/validate/migrate/push/seed/studio`.
+
+---
+
+## Módulo de ingesta (Fase 5)
+
+Ubicación: `apps/api/src/ingestion/`. Endpoint `POST /ingest`.
+
+```
+ingestion/
+├── ingestion.controller.ts   POST /ingest + validación de envelope
+├── ingestion.service.ts      orquestación: normalize → dedupe → persistir (transacción atómica)
+├── ingestion.module.ts       providers: IngestionService + NormalizationService (reutiliza F3)
+├── envelope.ts               validateEnvelope (array no vacío, ≤5000, objetos planos) + MAX_BATCH_SIZE
+├── dedupe-key.ts             sha256 del evento normalizado canónico (reutilizado por seed)
+└── *.spec.ts                 dedupe-key, envelope, ingestion.service (Prisma mockeado)
+```
+
+### Comportamiento
+- **Auto-detección**: la `NormalizationService` identifica el carrier por evento (`supports()`), sin carrierCode en la ruta → agregar un 4º carrier no toca el core.
+- **Validación en el borde**: envelope inválido → `400` (no array, vacío, >5000, elemento no-objeto). Errores por evento NO descartan el lote.
+- **Flujo**: normalize por evento (fallos → lista `rejected`, continúa) → dedupe in-batch (primera ocurrencia por `dedupeKey`) → carriers `code→id` (1 query/lote) → shipments existentes + `createMany skipDuplicates` (3 queries/lote) → `createMany` de eventos con `skipDuplicates` (dedup cross-batch) → `updateMany` condicional del `current*` (solo avanza si es más nuevo → no regresa con eventos fuera de orden).
+- **Transacción**: `prisma.$transaction` (atómico); un fallo de persistencia hace rollback completo.
+- **Respuesta**: `200` con `{ received, created, duplicates, updatedShipments, rejected[] }`; `400` envelope; `500` error de DB.
+- `main.ts`: límite de body JSON subido a `10mb` (5000 eventos superan los 100kb por defecto).

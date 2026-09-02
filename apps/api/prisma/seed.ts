@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto'
 import { PrismaClient, ShipmentStatus, type Prisma } from '@prisma/client'
+import type { ShipmentStatus as SharedShipmentStatus } from '@andina-cargo/shared'
+import { dedupeKey as computeDedupeKey } from '../src/ingestion/dedupe-key.js'
 
 const prisma = new PrismaClient()
 
@@ -12,20 +13,6 @@ interface SeedNormalizedEvent {
   city: string
   country?: string
   rawPayload: unknown
-}
-
-// Mismo criterio que la ingesta (Fase 5): hash SHA-256 del evento normalizado
-// canónico. Garantiza unicidad en ShipmentEvent.dedupeKey.
-function dedupeKey(event: SeedNormalizedEvent): string {
-  const canonical = JSON.stringify({
-    trackingNumber: event.trackingNumber,
-    carrierCode: event.carrierCode,
-    occurredAt: event.occurredAt.toISOString(),
-    status: event.status,
-    city: event.city,
-    country: event.country ?? null,
-  })
-  return createHash('sha256').update(canonical).digest('hex')
 }
 
 const carriers = [
@@ -188,7 +175,15 @@ async function seedShipment(shipment: SeedShipment) {
             country: e.country,
             occurredAt: e.occurredAt,
             carrierId: shipment.carrierId,
-            dedupeKey: dedupeKey(e),
+            dedupeKey: computeDedupeKey({
+              trackingNumber: e.trackingNumber,
+              carrierCode: e.carrierCode,
+              status: e.status as SharedShipmentStatus,
+              occurredAt: e.occurredAt.toISOString(),
+              city: e.city,
+              country: e.country,
+              rawPayload: e.rawPayload,
+            }),
             rawPayload: e.rawPayload as Prisma.InputJsonValue,
           })),
         },
