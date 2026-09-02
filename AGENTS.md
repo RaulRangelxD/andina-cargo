@@ -387,13 +387,15 @@ Posteriormente: `FourthCarrierAdapter` sin modificar el core (crear el adapter y
 ### FASE 6 — API de consulta
 - `GET /shipments/:trackingNumber` y `GET /shipments` (paginado + filtro).
 - DTOs, validación, errores HTTP.
-- **Estado: SIGUIENTE**
+- **Estado: COMPLETADA**
+
+> Implementación en `apps/api/src/shipments/`. Ver sección "Módulo de consulta (Fase 6)" más abajo.
 
 ### FASE 7 — Panel Next.js
 - Buscador → Detalle → Estado → Ubicación → Timeline.
 - Consumir API real, tipos de `packages/shared`.
 - Documentar estrategia de fetching.
-- **Estado: PENDIENTE**
+- **Estado: SIGUIENTE**
 
 ### FASE 8 — Docker + Seed + ejecución reproducible
 - `docker compose up` funcional.
@@ -470,7 +472,7 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 6 — API de consulta.**
+**Fase 7 — Panel Next.js.**
 
 ---
 
@@ -559,3 +561,32 @@ ingestion/
 - **Transacción**: `prisma.$transaction` (atómico); un fallo de persistencia hace rollback completo.
 - **Respuesta**: `200` con `{ received, created, duplicates, updatedShipments, rejected[] }`; `400` envelope; `500` error de DB.
 - `main.ts`: límite de body JSON subido a `10mb` (5000 eventos superan los 100kb por defecto).
+
+---
+
+## Módulo de consulta (Fase 6)
+
+Ubicación: `apps/api/src/shipments/`. Endpoints `GET /shipments` y `GET /shipments/:trackingNumber`.
+
+```
+shipments/
+├── shipments.controller.ts    GET :trackingNumber + GET listado; valida query; códigos HTTP
+├── shipments.service.ts       queries Prisma: detalle (con timeline) + listado paginado
+├── shipments.module.ts        providers: ShipmentsService
+├── shipments-query.ts         parseShipmentsQuery (page, limit, status, carrierCode, city)
+└── *.spec.ts                  shipments-query, shipments.controller, shipments.service (Prisma mockeado)
+```
+
+Registrado en `AppModule` (junto a `DbModule` global que provee `PrismaService`).
+
+### Comportamiento
+- **`GET /shipments/:trackingNumber`**: devuelve `{ shipments: ShipmentDetail[] }` (puede haber varias guías con el mismo número en distintos carriers). Cada elemento incluye `carrier`, estado/ubicación actual y `timeline` ordenado por `occurredAt` ascendente. Tipos de `@andina-cargo/shared`.
+  - Query por `trackingNumber` (índice `@@unique([trackingNumber, carrierId])`) + busca `events` vía índice `(shipmentId, occurredAt)`.
+  - No encontrado → `404` con mensaje útil; `trackingNumber` vacío → `400`.
+- **`GET /shipments`**: listado paginado con filtros. Query params: `page` (≥1, default 1), `limit` (≥1, ≤100, default 20), `status`, `carrierCode`, `city`.
+  - Filtros: `status` → `currentStatus`, `carrierCode` → `carrier.code`, `city` → `currentCity` (contains, case-insensitive).
+  - Orden por `updatedAt DESC` (aprovecha `@@index([updatedAt])`); denormalizado `current*` evita escanear eventos (aprovecha `@@index([carrierId, currentStatus])`).
+  - Respuesta: `{ data: ShipmentListItem[], meta: { page, limit, total, totalPages } }`.
+  - Query inválida → `400` con mensaje.
+- **Validación en el borde**: `parseShipmentsQuery` valida tipos, rangos y valores de estado (solo los 5 del enum) antes de tocar la BD.
+- **Tipos compartidos**: respuestas modeladas con `Shipment`, `ShipmentEvent`, `ShipmentStatus` de `@andina-cargo/shared` (casts explícitos de `$Enums.ShipmentStatus` → shared por ser tipos nominalmente distintos a nivel de TS, mismo valor en runtime).
