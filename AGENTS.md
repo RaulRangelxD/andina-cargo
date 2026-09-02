@@ -236,13 +236,14 @@ andina-cargo/
 
 ### Notas
 
-- `@andina-cargo/shared` **sí es dependencia** de `apps/api` (`workspace:*`). No de `apps/web` todavía.
+- `@andina-cargo/shared` **sí es dependencia** de `apps/api` y de `apps/web` (ambas `workspace:*`).
 - `packages/shared` **es buildable** → `dist/` (usa `.ts` como fuente; `pnpm build` genera `dist/*.js` + `.d.ts`). Imports internos usan extensión `.js` (NodeNext ESM).
-- La API importa archivos con extensión `.js` (convención NodeNext ESM).
+- La API importa archivos con extensión `.js` (convención NodeNext ESM). El panel Next.js usa `moduleResolution: bundler` → imports **sin** extensión.
 - `apps/api` usa **Prisma** `@prisma/client` + schema `apps/api/prisma/schema.prisma`. Cliente generado en node_modules. Scripts `prisma:*`.
-- `apps/web` tiene un `pnpm-workspace.yaml` y `pnpm-lock.yaml` anidados (no estándar en monorepo).
-- No existen Docker, docker-compose ni archivos `.env` (solo `.env.example` con `DATABASE_URL` de Supabase).
-- Git: un solo commit (`init commit`); la rama tiene cambios de Fase 2 a Fase 5 sin commitear.
+- Durante Fase 7 se eliminaron los `pnpm-workspace.yaml` y `pnpm-lock.yaml` anidados de `apps/web` (no estándar) para integrar web al workspace raíz y así consumir `@andina-cargo/shared`.
+- El panel configura la URL de la API vía `NEXT_PUBLIC_API_URL` (ver `apps/web/.env.example`); default `http://localhost:3000`.
+- No existen Docker, docker-compose ni archivos `.env` (solo los `.env.example` de `DATABASE_URL` y `NEXT_PUBLIC_API_URL`).
+- Git: la rama tiene cambios de Fase 2 a Fase 7 sin commitear.
 
 ---
 
@@ -395,13 +396,15 @@ Posteriormente: `FourthCarrierAdapter` sin modificar el core (crear el adapter y
 - Buscador → Detalle → Estado → Ubicación → Timeline.
 - Consumir API real, tipos de `packages/shared`.
 - Documentar estrategia de fetching.
-- **Estado: SIGUIENTE**
+- **Estado: COMPLETADA**
+
+> Implementación en `apps/web/src/app/`, `apps/web/src/components/` y `apps/web/src/lib/`. Ver sección "Módulo panel (Fase 7)" más abajo.
 
 ### FASE 8 — Docker + Seed + ejecución reproducible
 - `docker compose up` funcional.
 - Seed completo con los tres transportistas.
 - README con instrucciones claras.
-- **Estado: PENDIENTE**
+- **Estado: SIGUIENTE**
 
 ### FASE 9 — Documentación y decisiones
 - `README.md`, `DECISIONS.md`, `AI.md`.
@@ -472,7 +475,7 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 7 — Panel Next.js.**
+**Fase 8 — Docker + Seed + ejecución reproducible.**
 
 ---
 
@@ -590,3 +593,35 @@ Registrado en `AppModule` (junto a `DbModule` global que provee `PrismaService`)
   - Query inválida → `400` con mensaje.
 - **Validación en el borde**: `parseShipmentsQuery` valida tipos, rangos y valores de estado (solo los 5 del enum) antes de tocar la BD.
 - **Tipos compartidos**: respuestas modeladas con `Shipment`, `ShipmentEvent`, `ShipmentStatus` de `@andina-cargo/shared` (casts explícitos de `$Enums.ShipmentStatus` → shared por ser tipos nominalmente distintos a nivel de TS, mismo valor en runtime).
+
+---
+
+## Módulo panel (Fase 7)
+
+Ubicación: `apps/web/src/`. SPA mínima sobre el API de consulta (Fase 6).
+
+```
+apps/web/src/
+├── app/
+│   ├── layout.tsx            metadata + lang es
+│   ├── page.tsx              server component → renderiza TrackingPage
+│   └── tracking-client.tsx   estado del buscador: query/loading/error/datos
+├── components/
+│   ├── tracking-panel.tsx    orquestación de estados (carga, vacío, error, datos)
+│   ├── tracking-form.tsx     input de guía + botón Buscar
+│   ├── shipment-card.tsx     detalle: carrier, guía, estado actual, ubicación, timeline
+│   └── status-message.tsx    mensaje contextual (info/error/empty)
+└── lib/
+    ├── api.ts                cliente fetch del API + tipos de respuesta (usa @andina-cargo/shared)
+    └── status-labels.ts      mapa ShipmentStatus → etiqueta ES + formateo de fecha
+```
+
+### Estrategia de fetching y refresco
+
+- **Consumo del API**: `lib/api.ts` expone `fetchShipmentByTrackingNumber(guia)` que llama a `GET {NEXT_PUBLIC_API_URL}/shipments/{guia}` y tipa la respuesta con `@andina-cargo/shared` (`Shipment`, `ShipmentEvent`, `Carrier`). Cada llamada usa `fetch(..., { cache: 'no-store' })` para no cachear en Next y reflejar datos frescos.
+- **URL base**: variable de entorno `NEXT_PUBLIC_API_URL` (ver `apps/web/.env.example`), default `http://localhost:3000`. Desarrollo local → apunta a la API NestJS local; despliegue Vercel → se configura la URL del entorno.
+- **Componente cliente**: `tracking-client.tsx` (marcado `'use client'`) gestiona `query`, `loading`, `error`, `shipments` y `hasSearched`. La búsqueda se dispara con el submit del form.
+- **Estados de UI** en `tracking-panel.tsx`: `loading` (mensaje "Buscando…"), `error` (mensaje del `ApiError`, incluye el 404 con el texto de la API), vacío (sin resultados de la API) y datos (una `ShipmentCard` por envío).
+- **Timeline**: el API ya devuelve `timeline` ordenado por `occurredAt` ascendente; el panel lo pinta en orden. Estados y fechas se presentan en español (`status-labels.ts`, timezone America/Bogota).
+- **Refresco**: no hay auto-refresh ni live update (fuera de alcance). Cada búsqueda es una petición nueva; al re-buscar se resetean datos y errores.
+- **Sin SSR de datos**: la página es estática (`○` prerendered); el fetching ocurre 100% en el cliente tras la interacción del usuario (no hay datos sensibles que precargar, prioridad simplicidad).

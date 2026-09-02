@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { NormalizationError } from '../normalization/normalization-errors.js';
 import { NormalizationService } from '../normalization/normalization.service.js';
 import type { NormalizedEvent } from '@andina-cargo/shared';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../db/prisma.service.js';
 import { dedupeKey } from './dedupe-key.js';
 
 export interface RejectedEvent {
@@ -57,7 +58,7 @@ function toRejected(itemIndex: number, error: unknown): RejectedEvent {
 export class IngestionService {
   constructor(
     private readonly normalizationService: NormalizationService,
-    private readonly prisma: PrismaClient,
+    private readonly prisma: PrismaService,
   ) {}
 
   async ingest(rawEvents: unknown[]): Promise<IngestResult> {
