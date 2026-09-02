@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Los 5 estados internos de Andina Cargo (1:1 con `ShipmentStatus` de
+// @andina-cargo/shared, sin traducción).
+enum ShipmentStatus {
+  picked_up
+  in_transit
+  out_for_delivery
+  incident
+  delivered
+}
+
+model Carrier {
+  id        String          @id @default(cuid())
+  code      String          @unique
+  name      String
+  shipments Shipment[]
+  events    ShipmentEvent[]
+}
+
+// `current*` está denormalizado: refleja el último evento del disparo y evita
+// escanear 2M+ eventos para devolver el estado/ubicación actual o el listado.
+model Shipment {
+  id                String         @id @default(cuid())
+  trackingNumber    String
+  carrierId         String
+  currentStatus     ShipmentStatus
+  currentCity       String
+  currentOccurredAt DateTime       @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(6)
+  carrier           Carrier        @relation(fields: [carrierId], references: [id], onDelete: Restrict)
+  events            ShipmentEvent[]
+
+  @@unique([trackingNumber, carrierId])
+  @@index([carrierId, currentStatus])
+  @@index([updatedAt])
+}
+
+model ShipmentEvent {
+  id         String         @id @default(cuid())
+  shipmentId String
+  carrierId  String
+  status     ShipmentStatus
+  city       String
+  country    String?
+  occurredAt DateTime       @db.Timestamptz(6)
+  // Hash SHA-256 del evento normalizado canónico; evita duplicados al
+  // reenviar lotes (la ingesta usa createMany skipDuplicates).
+  dedupeKey  String         @unique
+  rawPayload Json
+  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  carrier    Carrier        @relation(fields: [carrierId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId, occurredAt(sort: Desc)])
+  @@index([carrierId, occurredAt(sort: Desc)])
+}
