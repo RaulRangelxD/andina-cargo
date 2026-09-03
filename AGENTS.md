@@ -22,7 +22,6 @@ El sistema será mantenido por un equipo de dos personas que no participaron en 
 - Next.js (panel)
 - PostgreSQL y/o MongoDB según decisión arquitectónica
 - pnpm (package manager)
-- Docker / Docker Compose
 - Git / GitHub
 - No usar servicios de pago
 
@@ -242,7 +241,7 @@ andina-cargo/
 - `apps/api` usa **Prisma** `@prisma/client` + schema `apps/api/prisma/schema.prisma`. Cliente generado en node_modules. Scripts `prisma:*`.
 - Durante Fase 7 se eliminaron los `pnpm-workspace.yaml` y `pnpm-lock.yaml` anidados de `apps/web` (no estándar) para integrar web al workspace raíz y así consumir `@andina-cargo/shared`.
 - El panel configura la URL de la API vía `NEXT_PUBLIC_API_URL` (ver `apps/web/.env.example`); default `http://localhost:3000`.
-- No existen Docker, docker-compose ni archivos `.env` (solo los `.env.example` de `DATABASE_URL` y `NEXT_PUBLIC_API_URL`).
+- No existen archivos `.env` (solo los `.env.example` de `DATABASE_URL` y `NEXT_PUBLIC_API_URL`).
 - Git: la rama tiene cambios de Fase 2 a Fase 7 sin commitear.
 
 ---
@@ -310,7 +309,7 @@ No implementar salvo tiempo extra: autenticación, permisos, CI/CD, infraestruct
 ## Entregables
 
 1. **Repositorio público** — README, licencia, historial real de commits.
-2. **Sistema reproducible** — `docker compose up` levanta el proyecto.
+2. **Sistema reproducible** — el despliegue se reproduce con Supabase + Render + Vercel (ver "Arquitectura de despliegue (producción)").
 3. **DECISIONS.md** — 4-6 decisiones importantes. Formato:
    - Situación / Decisión / Alternativas descartadas / Qué sacrifiqué / Qué rompe a escala 100× / Qué haría con una semana más.
 4. **AI.md** — Qué se generó con IA, qué se reescribió, por qué, ejemplo concreto rechazado.
@@ -357,8 +356,6 @@ Vercel (panel Next.js web)
 - **Supabase** → base de datos PostgreSQL real. La API se conecta vía Prisma usando `DATABASE_URL` (connection pooler `*.pooler.supabase.com:6543` + `sslmode=require`). Migración `0001_init` y seed se aplican contra Supabase.
 - **Render** → aloja la **API NestJS** (servicio Node). Variables de entorno: `DATABASE_URL` (Supabase) y `PORT`.
 - **Vercel** → aloja el **panel Next.js**. Variable de entorno: `NEXT_PUBLIC_API_URL` apuntando a la URL pública de la API en Render.
-
-> Docker/Docker Compose (requisito obligatorio Fase 8) se mantiene como mecanismo de ejecución **local** del proyecto para reproducibilidad, pero la **producción se despliega con Supabase + Render + Vercel**. No sustituir esta especificación por Docker en producción.
 
 Adapters por transportista (en `apps/api/src/normalization/adapters/`):
 - `AndesExpressAdapter`
@@ -424,24 +421,18 @@ Posteriormente: `FourthCarrierAdapter` sin modificar el core (crear el adapter y
 
 > Implementación en `apps/web/src/app/`, `apps/web/src/components/` y `apps/web/src/lib/`. Ver sección "Módulo panel (Fase 7)" más abajo.
 
-### FASE 8 — Docker + Seed + ejecución reproducible
-- `docker compose up` funcional.
-- Seed completo con los tres transportistas.
-- README con instrucciones claras.
-- **Estado: SIGUIENTE**
-
-### FASE 9 — Documentación y decisiones
+### FASE 8 — Documentación y decisiones
 - `README.md`, `DECISIONS.md`, `AI.md`.
 - 4-6 decisiones en DECISIONS.md.
-- **Estado: PENDIENTE**
+- **Estado: COMPLETADA**
 
-### FASE 10 — Tests y revisión final
+### FASE 9 — Tests y revisión final
 - Priorizar: normalización (3 carriers), casos problemáticos, ingesta, consulta, timeline.
 - Ejecutar: typecheck, lint, tests, build.
 - **Estado: PENDIENTE**
 
-### FASE 11 — Entrega
-- Verificar: README, DECISIONS.md, AI.md, LICENSE, Docker, Seed, Tests, Git history.
+### FASE 10 — Entrega
+- Verificar: README, DECISIONS.md, AI.md, LICENSE, Seed, Tests, Git history.
 - Mínimo 6 commits significativos.
 - Preparar: repo público, instrucciones, vídeo, resumen de lo faltante.
 - **Estado: PENDIENTE**
@@ -499,7 +490,7 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 8 — Docker + Seed + ejecución reproducible**, conectando la base real **Supabase** y desplegando API en **Render** + panel en **Vercel** según la especificación de despliegue (ver sección "Arquitectura de despliegue (producción)").
+**Fase 8 — Documentación y decisiones**, confirmando el despliegue de la base real **Supabase** y la API en **Render** + panel en **Vercel** según la especificación de despliegue (ver sección "Arquitectura de despliegue (producción)").
 
 ---
 
