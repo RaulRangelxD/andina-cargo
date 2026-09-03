@@ -241,8 +241,8 @@ andina-cargo/
 - `apps/api` usa **Prisma** `@prisma/client` + schema `apps/api/prisma/schema.prisma`. Cliente generado en node_modules. Scripts `prisma:*`.
 - Durante Fase 7 se eliminaron los `pnpm-workspace.yaml` y `pnpm-lock.yaml` anidados de `apps/web` (no estándar) para integrar web al workspace raíz y así consumir `@andina-cargo/shared`.
 - El panel configura la URL de la API vía `NEXT_PUBLIC_API_URL` (ver `apps/web/.env.example`); default `http://localhost:3000`.
-- No existen archivos `.env` (solo los `.env.example` de `DATABASE_URL` y `NEXT_PUBLIC_API_URL`).
-- Git: la rama tiene cambios de Fase 2 a Fase 7 sin commitear.
+- No se commitean archivos `.env`. Solo están versionados los `.env.example` de `DATABASE_URL` y `NEXT_PUBLIC_API_URL`. Puede existir un `apps/api/.env` local (gitignored) para desarrollo.
+- Git: todas las fases quedaron commiteadas en la rama `master` (9 commits significativos). El único cambio que reaparece al hacer `pnpm --filter api build` es el artefacto local `apps/api/tsconfig.build.tsbuildinfo` (gitignored en la práctica, se restaura con `git checkout --` si molesta).
 
 ---
 
@@ -429,13 +429,13 @@ Posteriormente: `FourthCarrierAdapter` sin modificar el core (crear el adapter y
 ### FASE 9 — Tests y revisión final
 - Priorizar: normalización (3 carriers), casos problemáticos, ingesta, consulta, timeline.
 - Ejecutar: typecheck, lint, tests, build.
-- **Estado: PENDIENTE**
+- **Estado: COMPLETADA** (71 tests pasan; lint/typecheck/build verdes en API, web y shared; sin huecos por cubrir)
 
 ### FASE 10 — Entrega
 - Verificar: README, DECISIONS.md, AI.md, LICENSE, Seed, Tests, Git history.
 - Mínimo 6 commits significativos.
 - Preparar: repo público, instrucciones, vídeo, resumen de lo faltante.
-- **Estado: PENDIENTE**
+- **Estado: COMPLETADA** (ver "Estado de entrega" abajo. Pendiente humano: repo público + vídeo)
 
 ---
 
@@ -490,7 +490,31 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 8 — Documentación y decisiones**, confirmando el despliegue de la base real **Supabase** y la API en **Render** + panel en **Vercel** según la especificación de despliegue (ver sección "Arquitectura de despliegue (producción)").
+**No hay fases de código pendientes: Fases 1–10 COMPLETADAS.**
+
+Pendiente **humano** (no es tarea de código): hacer el **repositorio público** en
+GitHub y grabar el **vídeo** final (máx. 5 min, sin edición, al menos la mitad
+explicando decisiones). Ver "Estado de entrega" más abajo.
+
+---
+
+## Estado de entrega
+
+Fases 1–10 completadas. Verificación de la Fase 10 (entrega):
+
+- **README.md** — completo (arquitectura, estructura, puesta en marcha, scripts, despliegue).
+- **DECISIONS.md** — 6 decisiones con el formato fijo (situación / decisión / alternativas descartadas / qué sacrifiqué / qué rompe a escala 100× / qué haría con una semana más).
+- **AI.md** — qué se generó con IA, qué se reescribió, por qué y un ejemplo concreto rechazado (dedupe por `rawPayload` → descartado en favor de la huella sobre el evento normalizado).
+- **LICENSE** — MIT.
+- **Seed** — idempotente: 3 carriers + 3 shipments (cada uno con timeline de los tres formatos). Guías de ejemplo: `AC-4471`, `TB-8820`, `RS-3045`.
+- **Tests** — 71 pasan (normalización de los 3 carriers + casos problemáticos, ingesta con dedupe/rollback/out-of-order, consulta con timeline ordenado).
+- **Git history** — 9 commits significativos (≥6 requeridos). Único cambio sin commitear al cierre: artefacto local `apps/api/tsconfig.build.tsbuildinfo` (se restaura con `git checkout -- apps/api/tsconfig.build.tsbuildinfo` tras cada `nest build`).
+- **Seguridad** — no se commitean secretos: solo `.env.example` versionados; `apps/api/.env` está en `.gitignore`.
+
+Pendiente **humano** (fuera del ámbito de código y sin pasar por git remoto por
+regla interna):
+1. Marcar el repositorio como **público** en GitHub.
+2. Grabar el **vídeo** (máx. 5 min, sin edición, ≥50% explicando decisiones).
 
 ---
 
