@@ -336,6 +336,30 @@ Query API
 Next.js
 ```
 
+---
+
+## Arquitectura de despliegue (producción)
+
+**Especificación fija acordada por el equipo** — la infraestructura de producción es:
+
+```
+Supabase (PostgreSQL real, destino Fase 4)
+     ▲
+     │ DATABASE_URL (Prisma)
+     │
+Render (API NestJS)
+     ▲
+     │ NEXT_PUBLIC_API_URL
+     │
+Vercel (panel Next.js web)
+```
+
+- **Supabase** → base de datos PostgreSQL real. La API se conecta vía Prisma usando `DATABASE_URL` (connection pooler `*.pooler.supabase.com:6543` + `sslmode=require`). Migración `0001_init` y seed se aplican contra Supabase.
+- **Render** → aloja la **API NestJS** (servicio Node). Variables de entorno: `DATABASE_URL` (Supabase) y `PORT`.
+- **Vercel** → aloja el **panel Next.js**. Variable de entorno: `NEXT_PUBLIC_API_URL` apuntando a la URL pública de la API en Render.
+
+> Docker/Docker Compose (requisito obligatorio Fase 8) se mantiene como mecanismo de ejecución **local** del proyecto para reproducibilidad, pero la **producción se despliega con Supabase + Render + Vercel**. No sustituir esta especificación por Docker en producción.
+
 Adapters por transportista (en `apps/api/src/normalization/adapters/`):
 - `AndesExpressAdapter`
 - `TransBolivarAdapter`
@@ -475,7 +499,7 @@ Si una funcionalidad amenaza el tiempo: **recortar alcance antes que entregar fu
 
 ## Siguiente tarea
 
-**Fase 8 — Docker + Seed + ejecución reproducible.**
+**Fase 8 — Docker + Seed + ejecución reproducible**, conectando la base real **Supabase** y desplegando API en **Render** + panel en **Vercel** según la especificación de despliegue (ver sección "Arquitectura de despliegue (producción)").
 
 ---
 
